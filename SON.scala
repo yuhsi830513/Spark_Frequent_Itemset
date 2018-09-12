@@ -5,7 +5,7 @@ import scala.math.Ordering.Implicits._
 import scala.util.Sorting
 import java.io.{File, PrintWriter}
 
-object SON{
+object SON1{
   def main(args: Array[String]): Unit = {
     val support = args(2).toFloat
     val path = args(1)
@@ -29,13 +29,13 @@ object SON{
     val totalBaskets = baskets.count().toFloat
 
     //1st Stage: find candidate frequent set
-    val firstStage = baskets.mapPartitions(someBaskets => {
-      var itemLists = ListBuffer.empty[(List[String])]
-      someBaskets.toList.map(b => itemLists += b._2.toList)
+    val firstStage = baskets.mapPartitions(itemLists => {
+      var someBaskets = ListBuffer.empty[(List[String])]
+      itemLists.toList.map(b => someBaskets += b._2.toList)
       println("\n\nFirst stage")
 
-      val p = support/ totalBaskets* itemLists.size
-      val singles = itemLists.flatten.groupBy(identity)
+      val p = support/ totalBaskets* someBaskets.size
+      val singles = someBaskets.flatten.groupBy(identity)
                         .map(i => (List(i._1), i._2.size))
                         .filter(i => i._2 >= p)//singles: Map[List[String], Int]
 
@@ -45,25 +45,44 @@ object SON{
       var candList = singles.keys.toList  
       var itr = 2
       var sizeOfC = 1
-
-      while(sizeOfC != 0) {
+      do {
         println("itr = " + itr) 
         var combList = combination(candList, itr)//List[List[String]]
-        println("Number of combinations = "+ combList.size)
         var validSingles = combList.flatten.toSet
-        var counter = itemLists.map(basket =>{
+        println("Number of combinations: "+ combList.size.toString)
+        /*Version 1*/
+        /*var candidates = someBaskets.map(basket =>
+          for {comb <- combList if comb.forall(basket.contains)}
+            yield(comb)
+          //we want a list of valid combination List[List[String]]
+          //aggregate(start:A) (seqOp, comOp) 
+          ).flatMap(x=>x).groupBy(identity)
+          .mapValues(i=>i.size)
+          .filter(comb => comb._2 >= p).toMap
+        */
+        /*version 2
+          var counter = itemLists.map(basket =>{
           var smallBasket = basket.toSet.intersect(validSingles)
-          combList.par.filter(comb => comb.forall(basket.contains))
+          stcombList.filter(comb => comb.forall(smallBasket.contains))
         }).flatten.groupBy(identity)
           .mapValues(i => i.size)
-          
+        */
+        /*version 3*/
+        var candidates = combList.par.map(comb => {
+          var count = 0
+          someBaskets.map(basket => {
+            var smallBasket = basket.toSet.intersect(validSingles)
+            if(comb.forall(smallBasket.contains))
+              count += 1
+          })
+          (comb, count)
+        }).filter(comb => comb._2 >= p).toMap
         println("counter ended")
-        var candidates = counter.filter(comb => comb._2 >= p).toMap
         candidates.foreach(c => {result.append(c)})
         sizeOfC = candidates.size
         candList = candidates.keys.toList
         itr += 1
-      }
+      }while(sizeOfC != 0)
       result.toIterator
     }).reduceByKey((a, b) => 1).collect()
     
@@ -102,6 +121,7 @@ object SON{
       iter
     } else iter
   } 
+
 
 
   def combination(candidates: List[List[String]], itr: Int): List[List[String]] = {
